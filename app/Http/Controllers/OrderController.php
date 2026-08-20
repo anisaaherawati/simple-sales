@@ -1,0 +1,294 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Pelanggan;
+use App\Models\Produk;
+use App\Models\Penjualan;
+use App\Models\DetailPenjualan;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+
+class OrderController extends Controller
+{
+    public function index(Request $request)
+    {
+        $cari = $request->cari;
+
+        $order = Penjualan::with('pelanggan')
+            ->where('id_user', auth()->user()->id_user)
+            ->when($cari, function ($query, $cari) {
+                $query->where(function ($q) use ($cari) {
+                    $q->where('nomor_penjualan', 'like', "%{$cari}%")
+                        ->orWhereHas('pelanggan', function ($pelanggan) use ($cari) {
+                            $pelanggan->where('nama_pelanggan', 'like', "%{$cari}%")
+                                ->orWhere('nama_toko', 'like', "%{$cari}%");
+                        });
+                });
+            })
+            ->orderBy('id_penjualan', 'desc')
+            ->paginate(10)
+            ->withQueryString();
+
+        return view('order.index', compact('order', 'cari'));
+    }
+
+    public function create()
+    {
+        $pelanggan = Pelanggan::where('status_pelanggan', 'aktif')
+            ->orderBy('nama_pelanggan')
+            ->get();
+
+        $produk = Produk::where('status_produk', 'aktif')
+            ->where('stok_produk', '>', 0)
+            ->orderBy('nama_produk')
+            ->get();
+
+        $produkOptions = $produk->map(function ($item) {
+            return [
+                'id' => $item->id_produk,
+                'nama' => $item->nama_produk,
+                'stok' => $item->stok_produk,
+                'satuan' => $item->satuan_produk,
+                'harga' => $item->harga_produk,
+            ];
+        })->values();
+
+        return view('order.create', compact(
+            'pelanggan',
+            'produk',
+            'produkOptions'
+        ));
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'id_pelanggan' => 'required|exists:pelanggan,id_pelanggan',
+            'produk' => 'required|array|min:1',
+            'produk.*.id_produk' => 'required|exists:produk,id_produk',
+            'produk.*.jumlah' => 'required|integer|min:1',
+        ]);
+
+        DB::transaction(function () use ($data) {
+
+            $total = 0;
+            $detailData = [];
+
+            foreach ($data['produk'] as $item) {
+
+                $produk = Produk::where('id_produk', $item['id_produk'])
+                    ->where('status_produk', 'aktif')
+                    ->first();
+
+                if (!$produk) {
+                    throw ValidationException::withMessages([
+                        'produk' => 'Terdapat produk yang sudah tidak aktif.'
+                    ]);
+                }
+
+                if ($item['jumlah'] > $produk->stok_produk) {
+                    throw ValidationException::withMessages([
+                        'produk' => "Jumlah {$produk->nama_produk} melebihi stok yang tersedia."
+                    ]);
+                }
+
+                $harga = $produk->harga_produk;
+                $subtotal = $harga * $item['jumlah'];
+
+                $total += $subtotal;
+
+                $detailData[] = [
+                    'id_produk' => $produk->id_produk,
+                    'jumlah_produk' => $item['jumlah'],
+                    'harga_satuan' => $harga,
+                    'subtotal' => $subtotal,
+                ];
+            }
+
+            $penjualan = Penjualan::create([
+                'id_pelanggan' => $data['id_pelanggan'],
+                'id_user' => auth()->user()->id_user,
+                'nomor_penjualan' => 'PJ-' . now()->format('YmdHis') . '-' . random_int(100, 999),
+                'tanggal_penjualan' => now()->toDateString(),
+                'total_penjualan' => $total,
+                'status_penjualan' => 'menunggu_validasi',
+            ]);
+
+            foreach ($detailData as $detail) {
+
+                DetailPenjualan::create([
+                    'id_penjualan' => $penjualan->id_penjualan,
+                    'id_produk' => $detail['id_produk'],
+                    'jumlah_produk' => $detail['jumlah_produk'],
+                    'harga_satuan' => $detail['harga_satuan'],
+                    'subtotal' => $detail['subtotal'],
+                ]);
+            }
+        });
+
+        return redirect()
+            ->route('order.index')
+            ->with('success', 'Order penjualan berhasil dibuat.');
+    }
+
+    public function show(Penjualan $order)
+{
+    abort_if(
+        $order->id_user !== auth()->user()->id_user,
+        403
+    );
+
+    $order->load([
+        'pelanggan',
+        'detailPenjualan.produk'
+    ]);
+
+    return view('order.show', compact('order'));
+}
+
+public function edit(Penjualan $order)
+{
+    abort_if(
+        $order->id_user !== auth()->user()->id_user,
+        403
+    );
+
+    abort_if(
+        $order->status_penjualan !== 'menunggu_validasi',
+        403,
+        'Order yang sudah diproses tidak dapat diubah.'
+    );
+
+    $pelanggan = Pelanggan::where('status_pelanggan', 'aktif')
+        ->orderBy('nama_pelanggan')
+        ->get();
+
+    $produk = Produk::where('status_produk', 'aktif')
+        ->where('stok_produk', '>', 0)
+        ->orderBy('nama_produk')
+        ->get();
+
+    $produkOptions = $produk->map(function ($item) {
+        return [
+            'id' => $item->id_produk,
+            'nama' => $item->nama_produk,
+            'stok' => $item->stok_produk,
+            'satuan' => $item->satuan_produk,
+            'harga' => $item->harga_produk,
+        ];
+    })->values();
+
+    $order->load('detailPenjualan');
+
+    $detailOrder = $order->detailPenjualan->map(function ($detail) {
+        return [
+            'id_produk' => $detail->id_produk,
+            'jumlah' => $detail->jumlah_produk,
+        ];
+    })->values();
+
+    return view('order.edit', compact(
+        'order',
+        'pelanggan',
+        'produk',
+        'produkOptions',
+        'detailOrder'
+    ));
+}
+
+public function update(Request $request, Penjualan $order)
+{
+    abort_if(
+        $order->id_user !== auth()->user()->id_user,
+        403
+    );
+
+    abort_if(
+        $order->status_penjualan !== 'menunggu_validasi',
+        403,
+        'Order yang sudah diproses tidak dapat diubah.'
+    );
+
+    $data = $request->validate([
+        'id_pelanggan' => 'required|exists:pelanggan,id_pelanggan',
+
+        'produk' => 'required|array|min:1',
+
+        'produk.*.id_produk' => [
+            'required',
+            'distinct',
+            'exists:produk,id_produk',
+        ],
+
+        'produk.*.jumlah' => 'required|integer|min:1',
+    ]);
+
+    DB::transaction(function () use ($data, $order) {
+
+        $total = 0;
+        $detailBaru = [];
+
+        foreach ($data['produk'] as $item) {
+
+            $produk = Produk::where(
+                'id_produk',
+                $item['id_produk']
+            )
+                ->where('status_produk', 'aktif')
+                ->first();
+
+            if (!$produk) {
+                throw ValidationException::withMessages([
+                    'produk' => 'Terdapat produk yang tidak aktif.'
+                ]);
+            }
+
+            if ($item['jumlah'] > $produk->stok_produk) {
+                throw ValidationException::withMessages([
+                    'produk' =>
+                        "Jumlah {$produk->nama_produk} melebihi stok."
+                ]);
+            }
+
+            $subtotal =
+                $produk->harga_produk * $item['jumlah'];
+
+            $total += $subtotal;
+
+            $detailBaru[] = [
+                'id_produk' => $produk->id_produk,
+                'jumlah_produk' => $item['jumlah'],
+                'harga_satuan' => $produk->harga_produk,
+                'subtotal' => $subtotal,
+            ];
+        }
+
+        $order->update([
+            'id_pelanggan' => $data['id_pelanggan'],
+            'total_penjualan' => $total,
+        ]);
+
+        DetailPenjualan::where(
+            'id_penjualan',
+            $order->id_penjualan
+        )->delete();
+
+        foreach ($detailBaru as $detail) {
+
+            DetailPenjualan::create([
+                'id_penjualan' => $order->id_penjualan,
+                'id_produk' => $detail['id_produk'],
+                'jumlah_produk' => $detail['jumlah_produk'],
+                'harga_satuan' => $detail['harga_satuan'],
+                'subtotal' => $detail['subtotal'],
+            ]);
+        }
+    });
+
+    return redirect()
+        ->route('order.index')
+        ->with('success', 'Order berhasil diubah.');
+}
+}

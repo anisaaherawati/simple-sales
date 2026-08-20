@@ -1,0 +1,163 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ProdukController;
+use App\Http\Controllers\SalesController;
+use App\Http\Controllers\PelangganController;
+use App\Http\Controllers\OrderController;
+use App\Http\Controllers\TransaksiController;
+use Illuminate\Support\Facades\Http;
+
+Route::get('/test-wa', function () {
+
+    $response = Http::withHeaders([
+        'Authorization' => config('services.fonnte.token'),
+    ])->asForm()->post('https://api.fonnte.com/send', [
+        'target' => '081334255490',
+        'message' => 'Halo, ini tes WhatsApp dari sistem PT Halus Ciptanadi.',
+        'countryCode' => '62',
+    ]);
+
+    return $response->json();
+});
+
+Route::get('/', function () {
+    return redirect()->route('login');
+});
+
+Route::middleware('guest')->group(function () {
+
+    Route::get('/login', [AuthController::class, 'showLogin'])
+        ->name('login');
+
+    Route::post('/login', [AuthController::class, 'login'])
+        ->name('login.process');
+
+});
+
+Route::middleware('auth')->group(function () {
+
+    Route::get('/dashboard', [DashboardController::class, 'index'])
+        ->name('dashboard');
+
+    Route::post('/logout', [AuthController::class, 'logout'])
+        ->name('logout');
+
+});
+
+Route::middleware(['auth', 'role:admin'])->group(function () {
+
+    Route::get('/produk', [ProdukController::class, 'index'])
+        ->name('produk.index');
+
+    Route::get('/produk/tambah', [ProdukController::class, 'create'])
+        ->name('produk.create');
+
+    Route::post('/produk', [ProdukController::class, 'store'])
+        ->name('produk.store');
+
+    Route::get('/produk/{produk}/edit', [ProdukController::class, 'edit'])
+        ->name('produk.edit');
+
+    Route::put('/produk/{produk}', [ProdukController::class, 'update'])
+        ->name('produk.update');
+
+    Route::patch('/produk/{produk}/nonaktifkan', [ProdukController::class, 'nonaktifkan'])
+        ->name('produk.nonaktifkan');
+    
+    Route::get(
+        '/transaksi',
+        [TransaksiController::class, 'index']
+    )->name('transaksi.index');
+
+    Route::get(
+        '/transaksi/{transaksi}',
+        [TransaksiController::class, 'show']
+    )->name('transaksi.show');
+    
+    Route::patch(
+        '/transaksi/{transaksi}/validasi',
+        [TransaksiController::class, 'validasi']
+    )->name('transaksi.validasi');
+
+    //sales 
+    Route::get('/sales', [SalesController::class, 'index'])
+    ->name('sales.index');
+
+    Route::get('/sales/tambah', [SalesController::class, 'create'])
+        ->name('sales.create');
+
+    Route::post('/sales', [SalesController::class, 'store'])
+        ->name('sales.store');
+
+    Route::get('/sales/{sales}/edit', [SalesController::class, 'edit'])
+        ->name('sales.edit');
+
+    Route::put('/sales/{sales}', [SalesController::class, 'update'])
+        ->name('sales.update');
+
+    Route::patch('/sales/{sales}/nonaktifkan', [SalesController::class, 'nonaktifkan'])
+        ->name('sales.nonaktifkan');
+        
+    Route::patch('/sales/{sales}/aktifkan', [SalesController::class, 'aktifkan'])
+        ->name('sales.aktifkan');
+
+    // sales
+    Route::middleware(['auth', 'role:admin,sales'])->group(function () {
+
+    Route::get('/pelanggan', [PelangganController::class, 'index'])
+        ->name('pelanggan.index');
+    
+    Route::get('/pelanggan/tambah', [PelangganController::class, 'create'])
+        ->name('pelanggan.create');
+    
+    Route::post('/pelanggan', [PelangganController::class, 'store'])
+        ->name('pelanggan.store');
+    
+    Route::get('/pelanggan/{pelanggan}/edit', [PelangganController::class, 'edit'])
+        ->name('pelanggan.edit');
+    
+    Route::put('/pelanggan/{pelanggan}', [PelangganController::class, 'update'])
+        ->name('pelanggan.update');
+    
+    Route::patch('/pelanggan/{pelanggan}/nonaktifkan', [PelangganController::class, 'nonaktifkan'])
+        ->name('pelanggan.nonaktifkan');
+    
+    });
+});
+
+Route::middleware(['auth', 'role:sales'])->group(function () {
+
+    Route::get('/order', [OrderController::class, 'index'])
+        ->name('order.index');
+    
+    Route::get('/order/tambah', [OrderController::class, 'create'])
+        ->name('order.create');
+
+    Route::get('/order/{order}', [OrderController::class, 'show'])
+        ->name('order.show');
+    
+    Route::get('/order/{order}/edit', [OrderController::class, 'edit'])
+        ->name('order.edit');
+    
+    Route::put('/order/{order}', [OrderController::class, 'update'])
+        ->name('order.update');
+    
+    Route::post('/order', [OrderController::class, 'store'])
+        ->name('order.store');
+
+});
+
+Route::middleware(['auth', 'role:direktur'])->group(function () {
+
+    // route khusus Direktur nanti ditaruh di sini
+
+});
+
+Route::middleware(['auth', 'role:admin,sales'])->group(function () {
+
+    // route yang boleh Admin dan Sales nanti ditaruh di sini
+
+});

@@ -1,0 +1,91 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Pelanggan;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+
+class PelangganController extends Controller
+{
+    public function index(Request $request)
+    {
+        $cari = $request->cari;
+
+        $pelanggan = Pelanggan::when($cari, function ($query, $cari) {
+            $query->where(function ($q) use ($cari) {
+                $q->where('kode_pelanggan', 'like', "%{$cari}%")
+                    ->orWhere('nama_pelanggan', 'like', "%{$cari}%")
+                    ->orWhere('nama_toko', 'like', "%{$cari}%")
+                    ->orWhere('no_wa', 'like', "%{$cari}%");
+            });
+        })
+        ->orderBy('id_pelanggan', 'desc')
+        ->paginate(10)
+        ->withQueryString();
+
+        return view('pelanggan.index', compact('pelanggan', 'cari'));
+    }
+
+    public function create()
+    {
+        return view('pelanggan.create');
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'kode_pelanggan' => 'required|max:30|unique:pelanggan,kode_pelanggan',
+            'nama_pelanggan' => 'required|max:100',
+            'nama_toko' => 'required|max:100',
+            'alamat_pelanggan' => 'required',
+            'no_wa' => 'required|max:20',
+        ]);
+
+        $data['status_pelanggan'] = 'aktif';
+
+        Pelanggan::create($data);
+
+        return redirect()
+            ->route('pelanggan.index')
+            ->with('success', 'Data pelanggan berhasil ditambahkan.');
+    }
+
+    public function edit(Pelanggan $pelanggan)
+    {
+        return view('pelanggan.edit', compact('pelanggan'));
+    }
+
+    public function update(Request $request, Pelanggan $pelanggan)
+    {
+        $data = $request->validate([
+            'kode_pelanggan' => [
+                'required',
+                'max:30',
+                Rule::unique('pelanggan', 'kode_pelanggan')
+                    ->ignore($pelanggan->id_pelanggan, 'id_pelanggan'),
+            ],
+            'nama_pelanggan' => 'required|max:100',
+            'nama_toko' => 'required|max:100',
+            'alamat_pelanggan' => 'required',
+            'no_wa' => 'required|max:20',
+        ]);
+
+        $pelanggan->update($data);
+
+        return redirect()
+            ->route('pelanggan.index')
+            ->with('success', 'Data pelanggan berhasil diubah.');
+    }
+
+    public function nonaktifkan(Pelanggan $pelanggan)
+    {
+        $pelanggan->update([
+            'status_pelanggan' => 'nonaktif',
+        ]);
+
+        return redirect()
+            ->route('pelanggan.index')
+            ->with('success', 'Pelanggan berhasil dinonaktifkan.');
+    }
+}
