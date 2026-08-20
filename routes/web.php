@@ -10,6 +10,13 @@ use App\Http\Controllers\OrderController;
 use App\Http\Controllers\TransaksiController;
 use Illuminate\Support\Facades\Http;
 
+
+/*
+|--------------------------------------------------------------------------
+| TEST FONNTE
+|--------------------------------------------------------------------------
+*/
+
 Route::get('/test-wa', function () {
 
     $response = Http::withHeaders([
@@ -23,9 +30,23 @@ Route::get('/test-wa', function () {
     return $response->json();
 });
 
+
+/*
+|--------------------------------------------------------------------------
+| ROOT
+|--------------------------------------------------------------------------
+*/
+
 Route::get('/', function () {
     return redirect()->route('login');
 });
+
+
+/*
+|--------------------------------------------------------------------------
+| AUTH
+|--------------------------------------------------------------------------
+*/
 
 Route::middleware('guest')->group(function () {
 
@@ -37,6 +58,13 @@ Route::middleware('guest')->group(function () {
 
 });
 
+
+/*
+|--------------------------------------------------------------------------
+| AUTHENTICATED USER
+|--------------------------------------------------------------------------
+*/
+
 Route::middleware('auth')->group(function () {
 
     Route::get('/dashboard', [DashboardController::class, 'index'])
@@ -47,7 +75,16 @@ Route::middleware('auth')->group(function () {
 
 });
 
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN
+|--------------------------------------------------------------------------
+*/
+
 Route::middleware(['auth', 'role:admin'])->group(function () {
+
+    // PRODUK
 
     Route::get('/produk', [ProdukController::class, 'index'])
         ->name('produk.index');
@@ -66,25 +103,24 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
 
     Route::patch('/produk/{produk}/nonaktifkan', [ProdukController::class, 'nonaktifkan'])
         ->name('produk.nonaktifkan');
-    
-    Route::get(
-        '/transaksi',
-        [TransaksiController::class, 'index']
-    )->name('transaksi.index');
 
-    Route::get(
-        '/transaksi/{transaksi}',
-        [TransaksiController::class, 'show']
-    )->name('transaksi.show');
-    
-    Route::patch(
-        '/transaksi/{transaksi}/validasi',
-        [TransaksiController::class, 'validasi']
-    )->name('transaksi.validasi');
 
-    //sales 
+    // TRANSAKSI
+
+    Route::get('/transaksi', [TransaksiController::class, 'index'])
+        ->name('transaksi.index');
+
+    Route::get('/transaksi/{transaksi}', [TransaksiController::class, 'show'])
+        ->name('transaksi.show');
+
+    Route::patch('/transaksi/{transaksi}/validasi', [TransaksiController::class, 'validasi'])
+        ->name('transaksi.validasi');
+
+
+    // SALES
+
     Route::get('/sales', [SalesController::class, 'index'])
-    ->name('sales.index');
+        ->name('sales.index');
 
     Route::get('/sales/tambah', [SalesController::class, 'create'])
         ->name('sales.create');
@@ -100,64 +136,91 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
 
     Route::patch('/sales/{sales}/nonaktifkan', [SalesController::class, 'nonaktifkan'])
         ->name('sales.nonaktifkan');
-        
+
     Route::patch('/sales/{sales}/aktifkan', [SalesController::class, 'aktifkan'])
         ->name('sales.aktifkan');
 
-    // sales
-    Route::middleware(['auth', 'role:admin,sales'])->group(function () {
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN + SALES
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware(['auth', 'role:admin,sales'])->group(function () {
+
+    // PELANGGAN
 
     Route::get('/pelanggan', [PelangganController::class, 'index'])
         ->name('pelanggan.index');
-    
+
     Route::get('/pelanggan/tambah', [PelangganController::class, 'create'])
         ->name('pelanggan.create');
-    
+
     Route::post('/pelanggan', [PelangganController::class, 'store'])
         ->name('pelanggan.store');
-    
+
     Route::get('/pelanggan/{pelanggan}/edit', [PelangganController::class, 'edit'])
         ->name('pelanggan.edit');
-    
+
     Route::put('/pelanggan/{pelanggan}', [PelangganController::class, 'update'])
         ->name('pelanggan.update');
-    
+
     Route::patch('/pelanggan/{pelanggan}/nonaktifkan', [PelangganController::class, 'nonaktifkan'])
         ->name('pelanggan.nonaktifkan');
-    
-    });
+
+
+    // KIRIM NOTA WHATSAPP
+
+    Route::post(
+        '/transaksi/{transaksi}/kirim-nota',
+        [TransaksiController::class, 'kirimNota']
+    )->name('transaksi.kirimNota');
+
 });
+
+
+/*
+|--------------------------------------------------------------------------
+| SALES
+|--------------------------------------------------------------------------
+*/
 
 Route::middleware(['auth', 'role:sales'])->group(function () {
 
+    // ORDER
+
     Route::get('/order', [OrderController::class, 'index'])
         ->name('order.index');
-    
+
     Route::get('/order/tambah', [OrderController::class, 'create'])
         ->name('order.create');
 
     Route::get('/order/{order}', [OrderController::class, 'show'])
         ->name('order.show');
-    
+
     Route::get('/order/{order}/edit', [OrderController::class, 'edit'])
         ->name('order.edit');
-    
+
     Route::put('/order/{order}', [OrderController::class, 'update'])
         ->name('order.update');
-    
+
     Route::post('/order', [OrderController::class, 'store'])
         ->name('order.store');
 
 });
 
+
+/*
+|--------------------------------------------------------------------------
+| DIREKTUR
+|--------------------------------------------------------------------------
+*/
+
 Route::middleware(['auth', 'role:direktur'])->group(function () {
 
     // route khusus Direktur nanti ditaruh di sini
-
-});
-
-Route::middleware(['auth', 'role:admin,sales'])->group(function () {
-
-    // route yang boleh Admin dan Sales nanti ditaruh di sini
 
 });

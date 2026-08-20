@@ -98,8 +98,11 @@
                     @if(auth()->user()->role === 'sales')
 
                         <a
-                            href="#"
-                            class="block px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white"
+                            href="{{ route('pelanggan.index') }}"
+                            class="block px-4 py-3 rounded-lg
+                            {{ request()->routeIs('pelanggan.*')
+                                ? 'bg-slate-800 text-white'
+                                : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}"
                         >
                             Data Pelanggan
                         </a>
