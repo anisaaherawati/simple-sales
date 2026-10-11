@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\BuktiPenyerahan;
 
 class Penjualan extends Model
 {
@@ -23,10 +24,13 @@ class Penjualan extends Model
         'tanggal_penjualan',
         'total_penjualan',
         'status_penjualan',
+        'bukti_penyerahan',
         'tanggal_validasi',
         'foto_toko',
+        'status_wa',
         'foto_bukti_penyerahan',
         'tanggal_selesai',
+        'alasan_penolakan',
     ];
 
     protected $casts = [
@@ -58,6 +62,15 @@ class Penjualan extends Model
     {
         return $this->hasMany(
             DetailPenjualan::class,
+            'id_penjualan',
+            'id_penjualan'
+        );
+    }
+
+    public function buktiPenyerahans()
+    {
+        return $this->hasMany(
+            BuktiPenyerahan::class,
             'id_penjualan',
             'id_penjualan'
         );

@@ -8,6 +8,7 @@ use App\Http\Controllers\SalesController;
 use App\Http\Controllers\PelangganController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\TransaksiController;
+use App\Http\Controllers\LaporanController;
 use Illuminate\Support\Facades\Http;
 
 
@@ -15,7 +16,7 @@ use Illuminate\Support\Facades\Http;
 |--------------------------------------------------------------------------
 | TEST FONNTE
 |--------------------------------------------------------------------------
-*/
+*/ 
 
 Route::get('/test-wa', function () {
 
@@ -115,6 +116,16 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
 
     Route::patch('/transaksi/{transaksi}/validasi', [TransaksiController::class, 'validasi'])
         ->name('transaksi.validasi');
+    
+    Route::patch(
+        '/order/{order}/konfirmasi-selesai',
+        [OrderController::class, 'konfirmasiSelesai']
+        )->name('order.konfirmasiSelesai');
+    
+    Route::patch(
+        '/order/{order}/tolak-bukti',
+        [OrderController::class, 'tolakBukti']
+    )->name('order.tolakBukti');
 
 
     // SALES
@@ -210,6 +221,14 @@ Route::middleware(['auth', 'role:sales'])->group(function () {
     Route::post('/order', [OrderController::class, 'store'])
         ->name('order.store');
 
+    Route::patch('/order/{order}/dikirim', [OrderController::class, 'dikirim'])
+        ->name('order.dikirim');
+
+    Route::post(
+        '/order/{order}/selesaikan',
+        [OrderController::class, 'selesaikan']
+    )->name('order.selesaikan');
+
 });
 
 
@@ -221,6 +240,13 @@ Route::middleware(['auth', 'role:sales'])->group(function () {
 
 Route::middleware(['auth', 'role:direktur'])->group(function () {
 
-    // route khusus Direktur nanti ditaruh di sini
+    Route::get('/laporan-direktur', [LaporanController::class, 'direktur'])
+        ->name('laporan.direktur');
+
+        Route::get('/laporan-direktur', [LaporanController::class, 'direktur'])
+        ->name('laporan.direktur');
+
+        Route::get('/laporan-stok', [LaporanController::class, 'stok'])
+        ->name('laporan.stok');
 
 });

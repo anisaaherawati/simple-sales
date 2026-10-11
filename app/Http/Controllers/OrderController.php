@@ -9,6 +9,7 @@ use App\Models\DetailPenjualan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use App\Models\BuktiPenyerahan;
 
 class OrderController extends Controller
 {
@@ -135,14 +136,19 @@ class OrderController extends Controller
 
     public function show(Penjualan $order)
 {
-    abort_if(
-        $order->id_user !== auth()->user()->id_user,
-        403
-    );
+    $user = auth()->user();
+
+    if (
+        $user->role !== 'admin' &&
+        $order->id_user !== $user->id_user
+    ) {
+        abort(403);
+    }
 
     $order->load([
         'pelanggan',
-        'detailPenjualan.produk'
+        'detailPenjualan.produk',
+        'buktiPenyerahans'
     ]);
 
     return view('order.show', compact('order'));
@@ -290,5 +296,146 @@ public function update(Request $request, Penjualan $order)
     return redirect()
         ->route('order.index')
         ->with('success', 'Order berhasil diubah.');
+}
+
+public function dikirim(Penjualan $order)
+{
+    abort_if(   
+        $order->id_user !== auth()->user()->id_user,
+        403
+    );
+
+    abort_if(
+        $order->status_penjualan !== 'tervalidasi',
+        403,
+        'Pesanan belum divalidasi admin.'
+    );
+
+    $order->update([
+        'status_penjualan' => 'dikirim',
+    ]);
+
+    return redirect()
+        ->route('order.show', $order)
+        ->with(
+            'success',
+            'Pesanan ditandai sedang diantar.'
+        );
+}
+
+public function selesaikan(Request $request, Penjualan $order)
+{
+    if ($order->id_user !== auth()->user()->id_user) {
+        abort(403);
+    }
+
+    if ($order->status_penjualan !== 'dikirim') {
+        return back()->with(
+            'error',
+            'Order belum berstatus dikirim.'
+        );
+    }
+
+    $request->validate([
+        'foto_bukti_penyerahan' => 'required|image|mimes:jpg,jpeg,png|max:10240',
+    ]);
+
+    $foto = $request->file('foto_bukti_penyerahan')
+        ->store('bukti-penyerahan', 'public');
+
+    // Simpan bukti ke tabel riwayat
+    BuktiPenyerahan::create([
+        'id_penjualan' => $order->id_penjualan,
+        'foto' => $foto,
+        'status' => 'menunggu_konfirmasi',
+        'tanggal_upload' => now(),
+    ]);
+
+    // Update status order
+    $order->update([
+        'foto_bukti_penyerahan' => $foto,
+        'status_penjualan' => 'menunggu_konfirmasi',
+        'bukti_penyerahan' => 'Bukti penyerahan menunggu konfirmasi admin',
+    ]);
+
+    return redirect()
+        ->route('order.show', $order)
+        ->with(
+            'success',
+            'Bukti penyerahan berhasil diupload dan menunggu konfirmasi admin.'
+        );
+}
+
+public function konfirmasiSelesai(Penjualan $order)
+{
+    if ($order->status_penjualan !== 'menunggu_konfirmasi') {
+        return back()->with(
+            'error',
+            'Order belum memiliki bukti penyerahan yang bisa dikonfirmasi.'
+        );
+    }
+
+    $bukti = $order->buktiPenyerahans()
+        ->where('status', 'menunggu_konfirmasi')
+        ->latest()
+        ->first();
+
+    if (!$bukti) {
+        return back()->with(
+            'error',
+            'Bukti penyerahan tidak ditemukan.'
+        );
+    }
+
+    $bukti->update([
+        'status' => 'diterima',
+        'tanggal_konfirmasi' => now(),
+    ]);
+
+    $order->update([
+        'status_penjualan' => 'selesai',
+        'tanggal_selesai' => now()->toDateString(),
+        'bukti_penyerahan' => 'Bukti penyerahan telah dikonfirmasi admin',
+    ]);
+
+    return back()->with(
+        'success',
+        'Bukti penyerahan berhasil dikonfirmasi. Order telah selesai.'
+    );
+}
+public function tolakBukti(Request $request, Penjualan $order)
+{
+    if ($order->status_penjualan !== 'menunggu_konfirmasi') {
+        return back()->with(
+            'error',
+            'Tidak ada bukti penyerahan yang bisa ditolak.'
+        );
+    }
+
+    $request->validate([
+        'alasan_penolakan' => 'required|string|max:500',
+    ]);
+
+    $bukti = $order->buktiPenyerahans()
+        ->where('status', 'menunggu_konfirmasi')
+        ->latest()
+        ->first();
+
+    if ($bukti) {
+        $bukti->update([
+            'status' => 'ditolak',
+            'alasan_penolakan' => $request->alasan_penolakan,
+        ]);
+    }
+
+    $order->update([
+        'status_penjualan' => 'dikirim',
+        'bukti_penyerahan' => 'Bukti penyerahan ditolak admin',
+    ]);
+
+    return back()->with(
+        'warning',
+        'Bukti penyerahan ditolak. Sales harus upload ulang.'
+    );
 }
 }

@@ -3,12 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Penjualan;
-use Illuminate\Http\Request;
 use App\Models\Produk;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Http;
-
+use Illuminate\Validation\ValidationException;
 
 class TransaksiController extends Controller
 {
@@ -18,9 +17,9 @@ class TransaksiController extends Controller
         $status = $request->status;
 
         $transaksi = Penjualan::with([
-                'pelanggan',
-                'user'
-            ])
+            'pelanggan',
+            'user'
+        ])
             ->when($cari, function ($query, $cari) {
 
                 $query->where(function ($q) use ($cari) {
@@ -60,7 +59,6 @@ class TransaksiController extends Controller
                     );
                 });
             })
-
             ->when($status, function ($query, $status) {
 
                 $query->where(
@@ -68,7 +66,6 @@ class TransaksiController extends Controller
                     $status
                 );
             })
-
             ->orderBy('id_penjualan', 'desc')
             ->paginate(10)
             ->withQueryString();
@@ -83,6 +80,7 @@ class TransaksiController extends Controller
         );
     }
 
+
     public function show(Penjualan $transaksi)
     {
         $transaksi->load([
@@ -91,8 +89,12 @@ class TransaksiController extends Controller
             'detailPenjualan.produk'
         ]);
 
-        return view('transaksi.show', compact('transaksi'));
+        return view(
+            'transaksi.show',
+            compact('transaksi')
+        );
     }
+
 
     public function validasi(Penjualan $transaksi)
     {
@@ -106,8 +108,10 @@ class TransaksiController extends Controller
                 ->firstOrFail();
 
             if ($transaksi->status_penjualan !== 'menunggu_validasi') {
+
                 throw ValidationException::withMessages([
-                    'transaksi' => 'Transaksi ini sudah diproses sebelumnya.'
+                    'transaksi' =>
+                        'Transaksi ini sudah diproses sebelumnya.'
                 ]);
             }
 
@@ -142,32 +146,47 @@ class TransaksiController extends Controller
             ]);
         });
 
-        // Ambil ulang data transaksi setelah berhasil divalidasi
+
+        /*
+        |--------------------------------------------------------------------------
+        | KIRIM WHATSAPP OTOMATIS
+        |--------------------------------------------------------------------------
+        */
+
         $transaksi->load([
             'pelanggan',
             'user',
             'detailPenjualan.produk'
         ]);
 
-        // Kirim nota otomatis ke WhatsApp
         $hasilWa = $this->kirimNotaOtomatis($transaksi);
 
+
         if ($hasilWa) {
+
             return redirect()
                 ->route('transaksi.show', $transaksi)
                 ->with(
                     'success',
-                    'Transaksi berhasil divalidasi dan nota berhasil dikirim ke WhatsApp customer.'
+                    'Transaksi berhasil divalidasi dan pesan WhatsApp berhasil dikirim ke customer.'
                 );
         }
+
 
         return redirect()
             ->route('transaksi.show', $transaksi)
             ->with(
                 'warning',
-                'Transaksi berhasil divalidasi, tetapi nota gagal dikirim ke WhatsApp customer.'
+                'Transaksi berhasil divalidasi, tetapi pesan WhatsApp gagal dikirim.'
             );
     }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | FUNGSI KIRIM WHATSAPP
+    |--------------------------------------------------------------------------
+    */
 
     private function kirimNotaOtomatis(Penjualan $transaksi)
     {
@@ -177,24 +196,42 @@ class TransaksiController extends Controller
             return false;
         }
 
+        $nomor = $transaksi->pelanggan->no_wa;
+
+
+        // Bersihkan nomor
         $nomor = preg_replace(
             '/[^0-9]/',
             '',
-            $transaksi->pelanggan->no_wa
+            $nomor
         );
 
+
+        // Ubah 08xxx menjadi 628xxx
         if (str_starts_with($nomor, '0')) {
             $nomor = '62' . substr($nomor, 1);
         }
 
-        $namaPelanggan = $transaksi->pelanggan
-            ? $transaksi->pelanggan->nama_pelanggan
-            : 'Pelanggan';
+
+        $namaPelanggan =
+            $transaksi->pelanggan->nama_pelanggan;
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | PESAN WHATSAPP
+        |--------------------------------------------------------------------------
+        */
 
         $pesan =
             "Halo, {$namaPelanggan}.\n\n" .
-            "Pesanan Anda dari PT Halus Ciptanadi telah divalidasi.\n\n" .
-            "Nomor transaksi: {$transaksi->nomor_penjualan}\n" .
+
+            "Pesanan Anda dari PT Halus Ciptanadi " .
+            "telah divalidasi.\n\n" .
+
+            "Nomor transaksi: " .
+            "{$transaksi->nomor_penjualan}\n" .
+
             "Total: Rp " .
             number_format(
                 $transaksi->total_penjualan,
@@ -202,27 +239,79 @@ class TransaksiController extends Controller
                 ',',
                 '.'
             ) .
+
             "\n\n" .
-            "Terima kasih telah melakukan pemesanan di PT Halus Ciptanadi.";
+
+            "Terima kasih telah melakukan pemesanan " .
+            "di PT Halus Ciptanadi.";
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | KIRIM KE FONNTE
+        |--------------------------------------------------------------------------
+        */
 
         try {
 
             $response = Http::timeout(15)
                 ->withHeaders([
-                    'Authorization' => config('services.fonnte.token'),
+                    'Authorization' =>
+                        config('services.fonnte.token'),
                 ])
                 ->asForm()
-                ->post('https://api.fonnte.com/send', [
-                    'target' => $nomor,
-                    'message' => $pesan,
-                    'countryCode' => '62',
-                ]);
+                ->post(
+                    'https://api.fonnte.com/send',
+                    [
+                        'target' => $nomor,
+                        'message' => $pesan,
+                        'countryCode' => '62',
+                    ]
+                );
 
-            return $response->successful()
-                && $response->json('status') === true;
+
+            /*
+            |--------------------------------------------------------------------------
+            | LOG RESPONSE FONNTE
+            |--------------------------------------------------------------------------
+            */
+
+            \Log::info(
+                'Response Fonnte',
+                [
+                    'transaksi' =>
+                        $transaksi->nomor_penjualan,
+
+                    'nomor' => $nomor,
+
+                    'response' =>
+                        $response->json(),
+                ]
+            );
+
+
+            if ($response->successful() && $response->json('status') === true) {
+
+                $transaksi->update([
+                    'status_wa' => 'terkirim',
+                ]);
+            
+                return true;
+            }
+            
+            $transaksi->update([
+                'status_wa' => 'gagal',
+            ]);
+            
+            return false;   
+
 
         } catch (\Exception $e) {
 
+            $transaksi->update([
+                'status_wa' => 'gagal',
+            ]);
+        
             \Log::error(
                 'Gagal mengirim WhatsApp Fonnte',
                 [
@@ -231,54 +320,80 @@ class TransaksiController extends Controller
                     'error' => $e->getMessage(),
                 ]
             );
-
+        
             return false;
         }
     }
-    
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | KIRIM NOTA MANUAL
+    |--------------------------------------------------------------------------
+    */
+
     public function kirimNota(Penjualan $transaksi)
     {
-        if ($transaksi->status_penjualan !== 'tervalidasi') {
+        if (
+            $transaksi->status_penjualan !==
+            'tervalidasi'
+        ) {
+
             return redirect()
                 ->back()
-                ->with('error', 'Nota hanya bisa dikirim setelah transaksi divalidasi.');
+                ->with(
+                    'error',
+                    'Nota hanya bisa dikirim setelah transaksi divalidasi.'
+                );
         }
 
-        if (!$transaksi->no_wa) {
+
+        $transaksi->load('pelanggan');
+
+
+        if (!$transaksi->pelanggan) {
+
             return redirect()
                 ->back()
-                ->with('error', 'Nomor WhatsApp customer belum diisi.');
+                ->with(
+                    'error',
+                    'Data pelanggan tidak ditemukan.'
+                );
         }
 
-        $nomor = preg_replace('/[^0-9]/', '', $transaksi->no_wa);
 
-        if (str_starts_with($nomor, '0')) {
-            $nomor = '62' . substr($nomor, 1);
-        }
+        if (!$transaksi->pelanggan->no_wa) {
 
-        $pesan =
-            "Halo, {$transaksi->pelanggan->nama_pelanggan}.\n\n" .
-            "Pesanan Anda dari PT Halus Ciptanadi telah divalidasi.\n\n" .
-            "Nomor transaksi: {$transaksi->nomor_penjualan}\n" .
-            "Total: Rp " . number_format($transaksi->total_penjualan, 0, ',', '.') . "\n\n" .
-            "Terima kasih telah melakukan pemesanan.";
-
-        $response = Http::withHeaders([
-            'Authorization' => config('services.fonnte.token'),
-        ])->asForm()->post('https://api.fonnte.com/send', [
-            'target' => $nomor,
-            'message' => $pesan,
-            'countryCode' => '62',
-        ]);
-
-        if (!$response->successful() || !$response->json('status')) {
             return redirect()
                 ->back()
-                ->with('error', 'Gagal mengirim WhatsApp melalui Fonnte.');
+                ->with(
+                    'error',
+                    'Nomor WhatsApp pelanggan belum diisi.'
+                );
         }
+
+
+        $hasil = $this->kirimNotaOtomatis(
+            $transaksi
+        );
+
+
+        if (!$hasil) {
+
+            return redirect()
+                ->back()
+                ->with(
+                    'error',
+                    'Gagal mengirim WhatsApp melalui Fonnte.'
+                );
+        }
+
 
         return redirect()
             ->back()
-            ->with('success', 'Pesan WhatsApp berhasil dikirim ke customer.');
+            ->with(
+                'success',
+                'Pesan WhatsApp berhasil dikirim ke customer.'
+            );
     }
 }
